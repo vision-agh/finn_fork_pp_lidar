@@ -103,18 +103,27 @@ class Im2Col(CustomOp):
         ofm_dim = compute_conv_output_dim(ifm_dim, k, stride, pad)
 
         # implement tensor with correct shape
-        values = np.random.randn(1, ofm_dim, ofm_dim, k * k * ifm_ch).astype(np.float32)
-        return helper.make_node(
-            "Constant",
-            inputs=[],
-            outputs=[self.onnx_node.output[0]],
-            value=helper.make_tensor(
+        #values = np.random.randn(1, ofm_dim, ofm_dim, k * k * ifm_ch)
+        # values = np.zeros((1, ofm_dim, ofm_dim, k * k * ifm_ch))
+        # dims = values.shape
+        values = np.zeros((1, 1, 2, 3))
+        dims = (1, ofm_dim, ofm_dim, k * k * ifm_ch)
+        values = values.flatten()
+        values = values.astype(float)
+        valju = helper.make_tensor(
                 name="const_tensor",
                 data_type=TensorProto.FLOAT,
-                dims=values.shape,
-                vals=values.flatten().astype(float),
-            ),
+                dims=dims,
+                vals=values,
         )
+        autput = [self.onnx_node.output[0]]
+        ret = helper.make_node(
+            "Constant",
+            inputs=[],
+            outputs=autput,
+            value=valju,
+        )
+        return ret
 
     def infer_node_datatype(self, model):
         node = self.onnx_node

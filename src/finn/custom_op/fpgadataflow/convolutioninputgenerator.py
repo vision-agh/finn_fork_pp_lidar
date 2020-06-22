@@ -126,7 +126,7 @@ class ConvolutionInputGenerator(HLSCustomOp):
         ishape = tuple(model.get_tensor_shape(self.onnx_node.input[0]))
         assert ishape == exp_ishape, "Unexpect input shape for ConvInpGen."
         # implement tensor with correct shape
-        values = np.random.randn(*oshape).astype(np.float32)
+        values = np.zeros((1, 1, 2, 3))
         return helper.make_node(
             "Constant",
             inputs=[],
@@ -134,7 +134,7 @@ class ConvolutionInputGenerator(HLSCustomOp):
             value=helper.make_tensor(
                 name="const_tensor",
                 data_type=TensorProto.FLOAT,
-                dims=values.shape,
+                dims=oshape,
                 vals=values.flatten().astype(float),
             ),
         )

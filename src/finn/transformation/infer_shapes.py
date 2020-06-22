@@ -53,11 +53,14 @@ def _hide_finn_ops(model):
     ops back to the old ops."""
     hidden_ops = {}
     node_ind = 0
+    node_name_format = "_TmpConstant_{idx}"
     for node in model.graph.node:
         node_ind += 1
         if node.domain == "finn":
             new_node = _make_shape_compatible_op(node, model)
-            hidden_ops[str(new_node)] = node
+            new_node.name = node_name_format.format(idx=node_ind)
+            assert new_node.name not in hidden_ops.keys(), "WTF ERROR!"
+            hidden_ops[new_node.name] = node
             model.graph.node.insert(node_ind, new_node)
             model.graph.node.remove(node)
     return hidden_ops
@@ -70,7 +73,7 @@ def _restore_finn_ops(model, hidden_ops):
     for node in model.graph.node:
         node_ind += 1
         try:
-            old_node = hidden_ops[str(node)]
+            old_node = hidden_ops[node.name]
             model.graph.node.insert(node_ind, old_node)
             model.graph.node.remove(node)
         except KeyError:

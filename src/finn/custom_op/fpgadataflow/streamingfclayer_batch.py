@@ -139,7 +139,7 @@ class StreamingFCLayer_Batch(HLSCustomOp):
     def make_shape_compatible_op(self, model):
         oshape = self.get_normal_output_shape()
         # implement tensor with correct shape
-        values = np.random.randn(*oshape).astype(np.float32)
+        values = np.zeros((1, 1, 2, 3))
         return helper.make_node(
             "Constant",
             inputs=[],
@@ -147,7 +147,7 @@ class StreamingFCLayer_Batch(HLSCustomOp):
             value=helper.make_tensor(
                 name="const_tensor",
                 data_type=TensorProto.FLOAT,
-                dims=values.shape,
+                dims=oshape,
                 vals=values.flatten().astype(float),
             ),
         )
