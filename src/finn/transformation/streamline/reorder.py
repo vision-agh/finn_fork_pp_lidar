@@ -35,6 +35,7 @@ from finn.transformation.infer_shapes import InferShapes
 from finn.core.onnx_exec import execute_node
 from finn.util.basic import get_by_name
 from finn.custom_op.registry import getCustomOp
+from copy import deepcopy
 
 
 class MoveAddPastMul(Transformation):
@@ -535,388 +536,130 @@ class MoveLinearPastFork(MoveOpPastFork):
         super().__init__(["Add", "Mul"])
 
 
+def replace_ops(model, first_op : str, second_op : str): #e.g. Add and Transpose
+    graph = model.graph
+    node_ind = 0
+    graph_modified = False
+    for n in graph.node:
+        node_ind += 1
+        if (
+            n.op_type == first_op
+            and not model.is_fork_node(n)
+            and not model.is_join_node(n)
+        ):
+            consumer = model.find_consumer(n.output[0])
+            if (
+                consumer is not None
+                and consumer.op_type == second_op
+                and not model.is_join_node(consumer)
+            ):
+                fop_weight_name = n.input[1]
+                A = model.get_initializer(fop_weight_name)
+
+                fop_input  = n.input[0]  #poprzedni nołd
+                fop_output = n.output[0] #Transpose
+                sop_input  = consumer.input[0] #Add
+                sop_output = consumer.output[0] #nastepny nołd
+
+                # make and insert new nodes
+                # new_fop = oh.make_node(
+                #     first_op,
+                #     [fop_output, fop_weight_name],
+                #     [sop_output],
+                #     name=n.name,
+                # )
+                # new_sop = oh.make_node(
+                #     first_op,
+                #     [fop_output, fop_weight_name],
+                #     [sop_output],
+                #     name=n.name,
+                # )
+                new_fop = deepcopy(n)
+                new_sop = deepcopy(consumer)
+
+                
+                new_fop.input[0]  = fop_output
+                new_fop.output[0] = sop_output
+                new_sop.output[0] = sop_input
+                new_sop.input[0]  = fop_input
+
+                sop_oshape = model.get_tensor_shape(sop_output)
+
+                graph.node.insert(node_ind, new_sop)
+                graph.node.insert(node_ind + 1, new_fop)
+
+                model.set_tensor_shape(new_fop.input[0], sop_oshape)
+                model.set_tensor_shape(new_fop.output[0], sop_oshape)
+
+                graph.node.remove(n)
+                graph.node.remove(consumer)
+
+                graph_modified = True
+
+    model = model.transform(InferShapes())
+    return (model, graph_modified)
+
+
 class MoveAddPastTranspose(Transformation):
     """Move Add nodes past Transpose nodes."""
 
     def apply(self, model):
-        graph = model.graph
-        node_ind = 0
-        graph_modified = False
-        for n in graph.node:
-            node_ind += 1
-            if (
-                n.op_type == "Add"
-                and not model.is_fork_node(n)
-                and not model.is_join_node(n)
-            ):
-                consumer = model.find_consumer(n.output[0])
-                if (
-                    consumer is not None
-                    and consumer.op_type == "Transpose"
-                    and not model.is_join_node(consumer)
-                ):
-                    add_input = n.input[0]
-                    add_output = n.output[0]
-                    transpose_input = consumer.input[0]
-                    transpose_output = consumer.output[0]
-
-                    consumer.input[0] = add_input
-                    n.input[0] = add_output
-                    consumer.output[0] = transpose_input
-                    n.output[0] = transpose_output
-
-                    transpose_oshape = model.get_tensor_shape(transpose_output)
-                    model.set_tensor_shape(n.input[0], transpose_oshape)
-                    model.set_tensor_shape(n.output[0], transpose_oshape)
-
-                    graph_modified = True
-
-        model = model.transform(InferShapes())
-        return (model, graph_modified)
-
-
-                pads = get_by_name(n.attribute, "pads")
-                has_padding = False
-                if pads is not None:
-                    pads = list(pads.ints)
-                    has_padding = np.prod(pads) != 0
-                if consumer is not None and consumer.op_type == "MultiThreshold":
-                    mt_out = consumer.output[0]
-                    mt_odt = model.get_tensor_datatype(mt_out)
-                    if mt_odt.signed() and has_padding:
-                        warnings.warn(
-                            "Skipping padded MaxPool + signed-output MultiThreshold"
-                        )
-                        continue
-                    # check for non-decreasing thresholds and nonnegative
-                    # scale factor in MultiThreshold
-                    # otherwise we cannot do the reordering
-                    T = model.get_initializer(consumer.input[1])
-                    T_sorted = np.sort(T, axis=1)
-                    assert (
-                        T == T_sorted
-                    ).all(), "MultiThreshold must have non-decreasing thresholds"
-                    mt_inst = getCustomOp(consumer)
-                    if mt_inst.get_nodeattr("out_scale") < 0:
-                        warnings.warn("Skipping MultiThreshold with negative out_scale")
-                        continue
-
-                    # remove old nodes
-                    graph.node.remove(n)
-                    graph.node.remove(consumer)
-
-                    # swap conections
-                    group_in = n.input[0]
-                    # new tensor because dims change
-                    group_middle = model.make_new_valueinfo_name()
-                    group_out = consumer.output[0]
+        return replace_ops(model, "Add", "Transpose")
 
 class MoveMulPastTranspose(Transformation):
     """Move Mul nodes past Transpose nodes."""
 
     def apply(self, model):
-        graph = model.graph
-        node_ind = 0
-        graph_modified = False
-        for n in graph.node:
-            node_ind += 1
-            if (
-                n.op_type == "Mul"
-                and not model.is_fork_node(n)
-                and not model.is_join_node(n)
-            ):
-                consumer = model.find_consumer(n.output[0])
-                if (
-                    consumer is not None
-                    and consumer.op_type == "Transpose"
-                    and not model.is_join_node(consumer)
-                ):
-                    Mul_input = n.input[0]
-                    Mul_output = n.output[0]
-                    transpose_input = consumer.input[0]
-                    transpose_output = consumer.output[0]
-
-                    consumer.input[0] = Mul_input
-                    n.input[0] = Mul_output
-                    consumer.output[0] = transpose_input
-                    n.output[0] = transpose_output
-
-                    transpose_oshape = model.get_tensor_shape(transpose_output)
-                    model.set_tensor_shape(n.input[0], transpose_oshape)
-                    model.set_tensor_shape(n.output[0], transpose_oshape)
-
-                    graph_modified = True
-
-        model = model.transform(InferShapes())
-        return (model, graph_modified)
+        return replace_ops(model, "Mul", "Transpose")
 
 class MoveAddPastMaxPool(Transformation):
     """Move Add nodes past MaxPool nodes."""
 
     def apply(self, model):
-        graph = model.graph
-        node_ind = 0
-        graph_modified = False
-        for n in graph.node:
-            node_ind += 1
-            if (
-                n.op_type == "Add"
-                and not model.is_fork_node(n)
-                and not model.is_join_node(n)
-            ):
-                consumer = model.find_consumer(n.output[0])
-                if (
-                    consumer is not None
-                    and consumer.op_type == "MaxPoolNHWC"
-                    and not model.is_join_node(consumer)
-                ):
-                    add_input = n.input[0]
-                    add_output = n.output[0]
-                    MaxPool_input = consumer.input[0]
-                    MaxPool_output = consumer.output[0]
-
-                    consumer.input[0] = add_input
-                    n.input[0] = add_output
-                    consumer.output[0] = MaxPool_input
-                    n.output[0] = MaxPool_output
-
-                    MaxPool_oshape = model.get_tensor_shape(MaxPool_output)
-                    model.set_tensor_shape(n.input[0], MaxPool_oshape)
-                    model.set_tensor_shape(n.output[0], MaxPool_oshape)
-                    
-                    graph_modified = True
-
-        model = model.transform(InferShapes())
-        return (model, graph_modified)
+        return replace_ops(model, "Add", "MaxPoolNHWC")
 
 class MoveMulPastMaxPoll(Transformation):
     """Move Mul nodes past MaxPool nodes."""
 
     def apply(self, model):
-        graph = model.graph
-        node_ind = 0
-        graph_modified = False
-        for n in graph.node:
-            node_ind += 1
-            if (
-                n.op_type == "Mul"
-                and not model.is_fork_node(n)
-                and not model.is_join_node(n)
-            ):
-                consumer = model.find_consumer(n.output[0])
-                if (
-                    consumer is not None
-                    and consumer.op_type == "MaxPoolNHWC"
-                    and not model.is_join_node(consumer)
-                ):
-                    Mul_input = n.input[0]
-                    Mul_output = n.output[0]
-                    MaxPool_input = consumer.input[0]
-                    MaxPool_output = consumer.output[0]
-
-                    consumer.input[0] = Mul_input
-                    n.input[0] = Mul_output
-                    consumer.output[0] = MaxPool_input
-                    n.output[0] = MaxPool_output
-
-                    MaxPool_oshape = model.get_tensor_shape(MaxPool_output)
-                    model.set_tensor_shape(n.input[0], MaxPool_oshape)
-                    model.set_tensor_shape(n.output[0], MaxPool_oshape)
-                    
-                    graph_modified = True
-
-        model = model.transform(InferShapes())
-        return (model, graph_modified)
+        return replace_ops(model, "Mul", "MaxPoolNHWC")
 
 class MoveAddPastIm2Col(Transformation):
     """Move Add nodes past Im2Col nodes."""
 
     def apply(self, model):
-        graph = model.graph
-        node_ind = 0
-        graph_modified = False
-        for n in graph.node:
-            node_ind += 1
-            if (
-                n.op_type == "Add"
-                and not model.is_fork_node(n)
-                and not model.is_join_node(n)
-            ):
-                consumer = model.find_consumer(n.output[0])
-                if (
-                    consumer is not None
-                    and consumer.op_type == "Im2Col"
-                    and not model.is_join_node(consumer)
-                ):
-                    add_input = n.input[0]
-                    add_output = n.output[0]
-                    Im2Col_input = consumer.input[0]
-                    Im2Col_output = consumer.output[0]
-
-                    consumer.input[0] = add_input
-                    n.input[0] = add_output
-                    consumer.output[0] = Im2Col_input
-                    n.output[0] = Im2Col_output
-                    
-                    Im2Col_oshape = model.get_tensor_shape(Im2Col_output)
-                    model.set_tensor_shape(n.input[0], Im2Col_oshape)
-                    model.set_tensor_shape(n.output[0], Im2Col_oshape)
-
-                    graph_modified = True
-
-        model = model.transform(InferShapes())
-        return (model, graph_modified)
+        return replace_ops(model, "Add", "Im2Col")
 
 class MoveMulPastIm2Col(Transformation):
     """Move Mul nodes past Im2Col nodes."""
 
     def apply(self, model):
-        graph = model.graph
-        node_ind = 0
-        graph_modified = False
-        for n in graph.node:
-            node_ind += 1
-            if (
-                n.op_type == "Mul"
-                and not model.is_fork_node(n)
-                and not model.is_join_node(n)
-            ):
-                consumer = model.find_consumer(n.output[0])
-                if (
-                    consumer is not None
-                    and consumer.op_type == "Im2Col"
-                    and not model.is_join_node(consumer)
-                ):
-                    Mul_input = n.input[0]
-                    Mul_output = n.output[0]
-                    Im2Col_input = consumer.input[0]
-                    Im2Col_output = consumer.output[0]
-
-                    consumer.input[0] = Mul_input
-                    n.input[0] = Mul_output
-                    consumer.output[0] = Im2Col_input
-                    n.output[0] = Im2Col_output
-
-                    Im2Col_oshape = model.get_tensor_shape(Im2Col_output)
-                    model.set_tensor_shape(n.input[0], Im2Col_oshape)
-                    model.set_tensor_shape(n.output[0], Im2Col_oshape)
-                    
-                    graph_modified = True
-
-        model = model.transform(InferShapes())
-        return (model, graph_modified)
+        return replace_ops(model, "Mul", "Im2Col")
 
 class MoveAddPastReshape(Transformation):
     """Move Add nodes past Reshape nodes."""
 
     def apply(self, model):
-        graph = model.graph
-        node_ind = 0
-        graph_modified = False
-        for n in graph.node:
-            node_ind += 1
-            if (
-                n.op_type == "Add"
-                and not model.is_fork_node(n)
-                and not model.is_join_node(n)
-            ):
-                consumer = model.find_consumer(n.output[0])
-                if (
-                    consumer is not None
-                    and consumer.op_type == "Reshape"
-                    and not model.is_join_node(consumer)
-                ):
-                    add_input = n.input[0]
-                    add_output = n.output[0]
-                    Reshape_input = consumer.input[0]
-                    Reshape_output = consumer.output[0]
-
-                    consumer.input[0] = add_input
-                    n.input[0] = add_output
-                    consumer.output[0] = Reshape_input
-                    n.output[0] = Reshape_output
-
-                    Reshape_oshape = model.get_tensor_shape(Reshape_output)
-                    model.set_tensor_shape(n.input[0], Reshape_oshape)
-                    model.set_tensor_shape(n.output[0], Reshape_oshape)
-
-                    graph_modified = True
-
-        model = model.transform(InferShapes())
-        return (model, graph_modified)
+       return replace_ops(model, "Add", "Reshape")
 
 class MoveMulPastReshape(Transformation):
     """Move Mul nodes past Reshape nodes."""
 
     def apply(self, model):
-        graph = model.graph
-        node_ind = 0
-        graph_modified = False
-        for n in graph.node:
-            node_ind += 1
-            if (
-                n.op_type == "Mul"
-                and not model.is_fork_node(n)
-                and not model.is_join_node(n)
-            ):
-                consumer = model.find_consumer(n.output[0])
-                if (
-                    consumer is not None
-                    and consumer.op_type == "Reshape"
-                    and not model.is_join_node(consumer)
-                ):
-                    Mul_input = n.input[0]
-                    Mul_output = n.output[0]
-                    Reshape_input = consumer.input[0]
-                    Reshape_output = consumer.output[0]
-
-                    consumer.input[0] = Mul_input
-                    n.input[0] = Mul_output
-                    consumer.output[0] = Reshape_input
-                    n.output[0] = Reshape_output
-
-                    Reshape_oshape = model.get_tensor_shape(Reshape_output)
-                    model.set_tensor_shape(n.input[0], Reshape_oshape)
-                    model.set_tensor_shape(n.output[0], Reshape_oshape)
-
-                    graph_modified = True
-
-        model = model.transform(InferShapes())
-        return (model, graph_modified)
+        return replace_ops(model, "Mul", "Reshape")
 
 class MoveAddMulPastIm2Col(Transformation):
     """Move Add and Mul nodes past Im2Col nodes."""
 
     def apply(self, model):
-        import finn.analysis.topology as ta
-        ret = model.analysis(ta.nodes_topologically_sorted)
-        print("Is topologically sorted before? : {}".format(ret))
         model = model.transform(MoveAddPastTranspose())
-        ret = model.analysis(ta.nodes_topologically_sorted)
-        print("Is topologically sorted 1? : {}".format(ret))
         model = model.transform(MoveMulPastTranspose())
-        ret = model.analysis(ta.nodes_topologically_sorted)
-        print("Is topologically sorted 2? : {}".format(ret))
         model = model.transform(MoveAddPastMaxPool())
-        ret = model.analysis(ta.nodes_topologically_sorted)
-        print("Is topologically sorted 3? : {}".format(ret))
         model = model.transform(MoveMulPastMaxPoll())
-        ret = model.analysis(ta.nodes_topologically_sorted)
-        print("Is topologically sorted 4? : {}".format(ret))
         model = model.transform(MoveAddPastIm2Col())
-        ret = model.analysis(ta.nodes_topologically_sorted)
-        print("Is topologically sorted 5? : {}".format(ret))
         model = model.transform(MoveMulPastIm2Col())
-        ret = model.analysis(ta.nodes_topologically_sorted)
-        print("Is topologically sorted 6? : {}".format(ret))
         model = model.transform(MoveAddPastReshape())
-        ret = model.analysis(ta.nodes_topologically_sorted)
-        print("Is topologically sorted 7? : {}".format(ret))
         model = model.transform(MoveMulPastReshape())
-        ret = model.analysis(ta.nodes_topologically_sorted)
-        print("Is topologically sorted 8? : {}".format(ret))
         graph_modified = False
         model = model.transform(InferShapes())
-        ret = model.analysis(ta.nodes_topologically_sorted)
-        print("Is topologically sorted after? : {}".format(ret))
         return (model, graph_modified)
