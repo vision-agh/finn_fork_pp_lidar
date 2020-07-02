@@ -567,6 +567,7 @@ class StreamingFCLayer_Batch(HLSCustomOp):
                     j += 1
                 with open("{}/memblock_{}.dat".format(code_gen_dir, j), "a+") as f:
                     f.write(val + "\n")
+                    # f.write(str(val) + "\n")
                 i += 1
 
         else:
