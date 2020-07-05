@@ -1,68 +1,32 @@
-## <img src=https://raw.githubusercontent.com/Xilinx/finn/master/docs/img/finn-logo.png width=128/> Fast, Scalable Quantized Neural Network Inference on FPGAs
+## Description
+
+This is a fork of the <a href="https://github.com/Xilinx/finn" target="_blank">official FINN repository</a>, based on commit ```d0ecac226902ed03a35de587bcf72f8f4bfb65fc```.
+
+It is customized for running Backbone and Detection Head parts of PointPillars network (see <a href="https://arxiv.org/abs/1812.05784" target="_blank">paper</a>).
+It is meant to run on <a href="https://www.xilinx.com/products/boards-and-kits/zcu104.html" target="_blank">ZCU104</a> board.
 
 
+## Getting started
 
-<img align="left" src="https://raw.githubusercontent.com/Xilinx/finn/master/docs/img/finn-stack.png" alt="drawing" style="margin-right: 20px" width="250"/>
+Steps for running the PointPillars network through FINN:
+1. Clone this repo: ```git clone -b pointpillars https://gitlab.com/konrad966/finn_fork.git```
 
-[![Gitter](https://badges.gitter.im/xilinx-finn/community.svg)](https://gitter.im/xilinx-finn/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
-[![ReadTheDocs](https://readthedocs.org/projects/finn/badge/?version=latest&style=plastic)](http://finn.readthedocs.io/)
+2. Go to the cloned repo directory.
 
-FINN is an experimental framework from Xilinx Research Labs to explore deep neural network
-inference on FPGAs.
-It specifically targets <a href="https://github.com/maltanar/qnn-inference-examples" target="_blank">quantized neural
-networks</a>, with emphasis on
-generating dataflow-style architectures customized for each network.
-The resulting FPGA accelerators can yield very high classification rates, or conversely be run with a slow clock for very low power consumption.
-The framework is fully open-source in order to give a higher degree of flexibility, and is intended to enable neural network research spanning several layers of the software/hardware abstraction stack.
+3. Clone forked PointPillars repo: ```git clone -b working_on_finn https://gitlab.com/konrad966/pointpillars_quantized.git ./pointpillars``` - it may be necessary to run through its README for getting everything going.
 
-For more general information about FINN, please visit the [project page](https://xilinx.github.io/finn/), check out the [publications](https://xilinx.github.io/finn/publications) or some of the [demos](https://xilinx.github.io/finn/demos).
+4. Clone PYNQ-HelloWorld: ```git clone https://github.com/maltanar/PYNQ-HelloWorld.git```
 
-## Getting Started
+5. If you use Vivado version other than 2019.1, change line ```set scripts_vivado_version 2019.1``` in file ```PYNQ-HelloWorld/boards/ZCU104/resizer/bitstream/resizer.tcl``` to the appropiate Vivado version.
+The FINN workflow for PointPillars was tested on 2019.2
 
-Please see the [Getting Started](https://finn.readthedocs.io/en/latest/getting_started.html) page for more information on requirements, installation, and how to run FINN in different modes. Due to the complex nature of the dependencies of the project, we only support Docker-based deployment at this time.
+6. Go through README of original FINN repository (commit ```d0ecac226902ed03a35de587bcf72f8f4bfb65fc```)
 
-## What's New in FINN?
+7. Run notebook ```end2end_example/pointpillars_finn.ipynb``` - it was adapted from ```cnv_end2end_example.ipynb``` notebook.
 
-* **2020-05-08:** v0.3b (beta) is released, with initial support for convolutions, parallel transformations, more flexible memory allocation for MVAUs, throughput testing and many other smaller improvements and bugfixes. Read more on the <a href="https://xilinx.github.io/finn/2020/05/08/finn-v03b-beta-is-released.html">release blog post</a>.
-* **2020-04-15:** FINN v0.2.1b (beta): use fixed commit versions for dependency repos, otherwise identical to 0.2b
-* **2020-02-28:** FINN v0.2b (beta) is released, which is a clean-slate reimplementation of the framework. Currently only fully-connected networks are supported for the end-to-end flow. Please see the release blog post for a summary of the key features.
 
-## Documentation
+## Changing network parameters
 
-You can view the documentation on [readthedocs](https://finn.readthedocs.io) or build them locally using `python setup.py doc` from inside the Docker container. Additionally, there is a series of [Jupyter notebook tutorials](https://github.com/Xilinx/finn/tree/master/notebooks), which we recommend running from inside Docker for a better experience.
-
-## Community
-
-We have a [gitter channel](https://gitter.im/xilinx-finn/community) where you can ask questions. You can use the GitHub issue tracker to report bugs, but please don't file issues to ask questions as this is better handled in the gitter channel.
-
-We also heartily welcome contributions to the project, please check out the [contribution guidelines](CONTRIBUTING.md) and the [list of open issues](https://github.com/Xilinx/finn/issues). Don't hesitate to get in touch over [Gitter](https://gitter.im/xilinx-finn/community) to discuss your ideas.
-
-## Citation
-
-The current implementation of the framework is based on the following publications. Please consider citing them if you find FINN useful.
-
-    @article{blott2018finn,
-      title={FINN-R: An end-to-end deep-learning framework for fast exploration of quantized neural networks},
-      author={Blott, Michaela and Preu{\ss}er, Thomas B and Fraser, Nicholas J and Gambardella, Giulio and O’brien, Kenneth and Umuroglu, Yaman and Leeser, Miriam and Vissers, Kees},
-      journal={ACM Transactions on Reconfigurable Technology and Systems (TRETS)},
-      volume={11},
-      number={3},
-      pages={1--23},
-      year={2018},
-      publisher={ACM New York, NY, USA}
-    }
-
-    @inproceedings{finn,
-    author = {Umuroglu, Yaman and Fraser, Nicholas J. and Gambardella, Giulio and Blott, Michaela and Leong, Philip and Jahre, Magnus and Vissers, Kees},
-    title = {FINN: A Framework for Fast, Scalable Binarized Neural Network Inference},
-    booktitle = {Proceedings of the 2017 ACM/SIGDA International Symposium on Field-Programmable Gate Arrays},
-    series = {FPGA '17},
-    year = {2017},
-    pages = {65--74},
-    publisher = {ACM}
-    }
-
-## Old version
-
-We previously released an early-stage prototype of a toolflow that took in Caffe-HWGQ binarized network descriptions and produced dataflow architectures. You can find it in the [v0.1](https://github.com/Xilinx/finn/tree/v0.1) branch in this repository.
-Please be aware that this version is deprecated and unsupported, and the master branch does not share history with that branch so it should be treated as a separate repository for all purposes.
+You may want to run your own version of PointPillars through FINN.
+Then, you need to train such a model and save state dict of RPN part into file ```pp_net_params/rpn_weights```.
+The RPN class definition in ```pointpillars_finn.ipynb``` may need to be changed, respectively to your version of PointPillars.
