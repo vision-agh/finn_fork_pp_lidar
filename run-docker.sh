@@ -115,10 +115,6 @@ else
         DOCKER_INTERACTIVE="-it"
 fi
 
-NUMBAPRO_CUDA_DRIVER=/usr/lib/x86_64-linux-gnu/libcuda.so
-NUMBAPRO_NVVM=/usr/local/cuda/nvvm/lib64/libnvvm.so
-NUMBAPRO_LIBDEVICE=/usr/local/cuda/nvvm/libdevice
-
 # Build the FINN Docker image
 docker build -f docker/Dockerfile.finn_dev --tag=$DOCKER_TAG \
              --build-arg GID=$DOCKER_GID \
@@ -139,14 +135,10 @@ docker run -t --rm --name $DOCKER_INST_NAME $DOCKER_INTERACTIVE --init \
 -v $SCRIPTPATH:/workspace/finn \
 -v $BUILD_LOCAL:$BUILD_LOCAL \
 -v $VIVADO_PATH:$VIVADO_PATH \
--v $NUMBAPRO_CUDA_DRIVER:$NUMBAPRO_CUDA_DRIVER \
 -v $NUMBAPRO_NVVM:$NUMBAPRO_NVVM \
 -v $NUMBAPRO_LIBDEVICE:$NUMBAPRO_LIBDEVICE \
 -v $FINN_SSH_KEY_DIR:/home/$DOCKER_UNAME/.ssh \
 -e VIVADO_PATH=$VIVADO_PATH \
--e NUMBAPRO_CUDA_DRIVER=$NUMBAPRO_CUDA_DRIVER \
--e NUMBAPRO_NVVM=$NUMBAPRO_NVVM \
--e NUMBAPRO_LIBDEVICE=$NUMBAPRO_LIBDEVICE \
 -e FINN_INST_NAME=$DOCKER_INST_NAME \
 -e FINN_ROOT="/workspace/finn" \
 -e VIVADO_IP_CACHE="$VIVADO_IP_CACHE" \
