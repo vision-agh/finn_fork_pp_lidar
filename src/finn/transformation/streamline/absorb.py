@@ -108,6 +108,8 @@ class AbsorbMulIntoMultiThreshold(Transformation):
                         start_name = n.input[0]
                         # compute new thresholds and set initializer
                         Tnew = T / A.reshape(-1, 1)
+                        Tnew[Tnew == np.inf] = np.finfo(np.float32).max
+                        Tnew[Tnew == -np.inf] = np.finfo(np.float32).min
                         # TODO: need to handle negative A values correctly; produce
                         # mul sign mask and merge into preceding matmul?
                         model.set_initializer(threshold_name, Tnew)
