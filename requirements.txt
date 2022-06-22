@@ -1,7 +1,7 @@
 bitstring
 docrep
 future
-numpy==1.18.0
+numpy==1.22.0
 onnx==1.6.0
 onnxruntime==1.2.0
 pre-commit
